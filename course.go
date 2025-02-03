@@ -1,10 +1,18 @@
 package main
 
+type SubjectCode struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	ID          string `json:"id"`
+	LinkedGroup string `json:"linkedGroup"`
+}
+
 type Course struct {
-	CourseID string `json:"__catalogCourseId"`
-	PID      string `json:"pid"`
-	ID       string `json:"id"`
-	Title    string `json:"title"`
+	CourseID    string      `json:"__catalogCourseId"`
+	PID         string      `json:"pid"`
+	ID          string      `json:"id"`
+	Title       string      `json:"title"`
+	SubjectCode SubjectCode `json:"subjectCode"`
 }
 
 type CRN struct {
