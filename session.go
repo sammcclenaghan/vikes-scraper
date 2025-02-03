@@ -13,77 +13,9 @@ type Session struct {
 	client *http.Client
 }
 
-type CRN struct {
-	CourseReferenceNumber string `json:"courseReferenceNumber"`
-}
-
-type SessionCourse struct {
-	CRNS []CRN `json:"data"`
-}
-
-type DetailedCourseInfo struct {
-	Fmt []struct {
-		Category              string `json:"category"`
-		CourseReferenceNumber string `json:"courseReferenceNumber"`
-		Faculty               []struct {
-			BannerID         string `json:"bannerId"`
-			Category         string `json:"category"`
-			DisplayName      string `json:"displayName"`
-			EmailAddress     string `json:"emailAddress"`
-			PrimaryIndicator bool   `json:"primaryIndicator"`
-		} `json:"faculty"`
-		MeetingTime struct {
-			BeginTime           string `json:"beginTime"`
-			EndTime             string `json:"endTime"`
-			Building            string `json:"building"`
-			BuildingDescription string `json:"buildingDescription"`
-			Room                string `json:"room"`
-			Monday              bool   `json:"monday"`
-			Tuesday             bool   `json:"tuesday"`
-			Wednesday           bool   `json:"wednesday"`
-			Thursday            bool   `json:"thursday"`
-			Friday              bool   `json:"friday"`
-			MeetingScheduleType string `json:"meetingScheduleType"`
-		} `json:"meetingTime"`
-		Term string `json:"term"`
-	} `json:"fmt"`
-}
-
 func NewSession() (*Session, error) {
 	client := &http.Client{}
 	return &Session{client: client}, nil
-}
-
-func makeRequest(client *http.Client, method, url string, body io.Reader) error {
-	req, err := http.NewRequest(method, url, body)
-	if err != nil {
-		return err
-	}
-
-	req.Header = http.Header{
-		"Accept":          {"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"},
-		"Accept-Language": {"en-US,en;q=0.9"},
-		"Connection":      {"keep-alive"},
-		"User-Agent":      {"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"},
-		"Cache-Control":   {"max-age=0"},
-	}
-
-	if method == "POST" {
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-		req.Header.Set("X-Requested-With", "XMLHttpRequest")
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("request failed with status: %s", resp.Status)
-	}
-
-	return nil
 }
 
 func (s *Session) fetchCourseInfo(term string, subject string, courseNumber string) (*SessionCourse, error) {
@@ -120,15 +52,7 @@ func (s *Session) fetchCourseInfo(term string, subject string, courseNumber stri
 	}
 
 	req.Header = http.Header{
-		"Accept":           {"application/json, text/javascript, */*; q=0.01"},
-		"Accept-Language":  {"en-US,en;q=0.9"},
-		"Connection":       {"keep-alive"},
-		"X-Requested-With": {"XMLHttpRequest"},
-		"User-Agent":       {"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"},
-		"Referer":          {"https://banner.uvic.ca/StudentRegistrationSsb/ssb/classSearch/classSearch"},
-		"Sec-Fetch-Dest":   {"empty"},
-		"Sec-Fetch-Mode":   {"cors"},
-		"Sec-Fetch-Site":   {"same-origin"},
+		"User-Agent": {"Mozilla/5.0"},
 	}
 
 	resp, err := client.Do(req)
@@ -183,4 +107,36 @@ func (s *Session) fetchSessions(term, crn string) (*DetailedCourseInfo, error) {
 	}
 
 	return &info, nil
+}
+
+func makeRequest(client *http.Client, method, url string, body io.Reader) error {
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return err
+	}
+
+	req.Header = http.Header{
+		"Accept":          {"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"},
+		"Accept-Language": {"en-US,en;q=0.9"},
+		"Connection":      {"keep-alive"},
+		"User-Agent":      {"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"},
+		"Cache-Control":   {"max-age=0"},
+	}
+
+	if method == "POST" {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("request failed with status: %s", resp.Status)
+	}
+
+	return nil
 }
