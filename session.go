@@ -21,6 +21,34 @@ type SessionCourse struct {
 	CRNS []CRN `json:"data"`
 }
 
+type DetailedCourseInfo struct {
+	Fmt []struct {
+		Category              string `json:"category"`
+		CourseReferenceNumber string `json:"courseReferenceNumber"`
+		Faculty               []struct {
+			BannerID         string `json:"bannerId"`
+			Category         string `json:"category"`
+			DisplayName      string `json:"displayName"`
+			EmailAddress     string `json:"emailAddress"`
+			PrimaryIndicator bool   `json:"primaryIndicator"`
+		} `json:"faculty"`
+		MeetingTime struct {
+			BeginTime           string `json:"beginTime"`
+			EndTime             string `json:"endTime"`
+			Building            string `json:"building"`
+			BuildingDescription string `json:"buildingDescription"`
+			Room                string `json:"room"`
+			Monday              bool   `json:"monday"`
+			Tuesday             bool   `json:"tuesday"`
+			Wednesday           bool   `json:"wednesday"`
+			Thursday            bool   `json:"thursday"`
+			Friday              bool   `json:"friday"`
+			MeetingScheduleType string `json:"meetingScheduleType"`
+		} `json:"meetingTime"`
+		Term string `json:"term"`
+	} `json:"fmt"`
+}
+
 func NewSession() (*Session, error) {
 	client := &http.Client{}
 	return &Session{client: client}, nil
@@ -116,4 +144,43 @@ func (s *Session) fetchCourseInfo(term string, subject string, courseNumber stri
 	}
 
 	return &cr, nil
+}
+
+func (s *Session) fetchSessions(term, crn string) (*DetailedCourseInfo, error) {
+	termURL := "https://banner.uvic.ca/StudentRegistrationSsb/ssb/term/search?mode=search"
+	termData := strings.NewReader(fmt.Sprintf("term=%s&studyPath=&studyPathText=&startDatepicker=&endDatepicker=", term))
+
+	req, err := http.NewRequest("POST", termURL, termData)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	detailURL := fmt.Sprintf("https://banner.uvic.ca/StudentRegistrationSsb/ssb/searchResults/getFacultyMeetingTimes?term=%s&courseReferenceNumber=%s", term, crn)
+
+	req, err = http.NewRequest("GET", detailURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err = s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	var info DetailedCourseInfo
+	if err := json.Unmarshal(body, &info); err != nil {
+		return nil, fmt.Errorf("failed to decode JSON %v", err)
+	}
+
+	return &info, nil
 }

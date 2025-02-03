@@ -67,6 +67,20 @@ func main() {
 		for _, course := range crn.CRNS {
 			if course.CourseReferenceNumber != "" {
 				fmt.Println(course.CourseReferenceNumber)
+				details, err := session.fetchSessions("202501", course.CourseReferenceNumber)
+				if err != nil {
+					fmt.Printf("Error fetching course details: %v\n", err)
+					return
+				}
+				if len(details.Fmt) > 0 {
+					for _, section := range details.Fmt {
+						mt := section.MeetingTime
+						if mt.BeginTime != "" {
+							fmt.Printf("Schedule: %s-%s\n", mt.BeginTime, mt.EndTime)
+							fmt.Printf("Location: %s (%s) Room %s\n", mt.Building, mt.BuildingDescription, mt.Room)
+						}
+					}
+				}
 			}
 		}
 	}
