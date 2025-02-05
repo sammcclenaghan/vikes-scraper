@@ -18,7 +18,7 @@ func NewSession() (*Session, error) {
 	return &Session{client: client}, nil
 }
 
-func (s *Session) fetchCourseInfo(term string, subject string, courseNumber string) (*SessionCourse, error) {
+func (s *Session) fetchCourseInfo(term string, subject string, courseNumber string) (*CourseResponse, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, err
@@ -35,14 +35,12 @@ func (s *Session) fetchCourseInfo(term string, subject string, courseNumber stri
 		return nil, fmt.Errorf("init request failed: %v", err)
 	}
 
-	// Step 2: Set the term
 	termURL := "https://banner.uvic.ca/StudentRegistrationSsb/ssb/term/search?mode=search"
 	termData := strings.NewReader(fmt.Sprintf("term=%s&studyPath=&studyPathText=&startDatepicker=&endDatepicker=", term))
 	if err := makeRequest(client, "POST", termURL, termData); err != nil {
 		return nil, fmt.Errorf("term setup failed: %v", err)
 	}
 
-	// Step 3: Search for courses
 	searchURL := fmt.Sprintf("https://banner.uvic.ca/StudentRegistrationSsb/ssb/searchResults/searchResults?txt_term=%s&txt_subject=%s&txt_courseNumber=%s&pageOffset=0&pageMaxSize=50&sortColumn=subjectDescription&sortDirection=asc",
 		term, subject, courseNumber)
 
@@ -62,15 +60,15 @@ func (s *Session) fetchCourseInfo(term string, subject string, courseNumber stri
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	var cr SessionCourse
-	if err := json.Unmarshal(body, &cr); err != nil {
+	var response CourseResponse
+	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("failed to decode JSON %v", err)
 	}
 
-	return &cr, nil
+	return &response, nil
 }
 
-func (s *Session) fetchSessions(term, crn string) (*DetailedCourseInfo, error) {
+func (s *Session) fetchSessions(term, crn string) (*DetailedResponse, error) {
 	termURL := "https://banner.uvic.ca/StudentRegistrationSsb/ssb/term/search?mode=search"
 	termData := strings.NewReader(fmt.Sprintf("term=%s&studyPath=&studyPathText=&startDatepicker=&endDatepicker=", term))
 
@@ -101,7 +99,7 @@ func (s *Session) fetchSessions(term, crn string) (*DetailedCourseInfo, error) {
 
 	body, _ := io.ReadAll(resp.Body)
 
-	var info DetailedCourseInfo
+	var info DetailedResponse
 	if err := json.Unmarshal(body, &info); err != nil {
 		return nil, fmt.Errorf("failed to decode JSON %v", err)
 	}

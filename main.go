@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 type CSVExportRow struct {
@@ -27,6 +28,17 @@ type CSVExportRow struct {
 	InstructionalMethod string
 	Units               string
 	Available           bool
+	Campus              string
+	CampusDescription   string
+	BuildingCode        string
+	BuildingName        string
+	RoomNumber          string
+	MeetingType         string
+	MeetingDescription  string
+	InstructorEmail     string
+	CreditHours         string
+	StartDate           string
+	EndDate             string
 }
 
 func formatTime(time string) string {
@@ -57,17 +69,16 @@ func getDays(mt MeetingTime) string {
 	return days
 }
 
-func getInstructors(faculty []struct {
-	DisplayName  string `json:"displayName"`
-	EmailAddress string `json:"emailAddress"`
-}) string {
+func getInstructors(faculty []Faculty) string {
 	var names []string
 	for _, f := range faculty {
-		if f.DisplayName != "" {
+		if f.EmailAddress != "" {
+			names = append(names, fmt.Sprintf("%s (%s)", f.DisplayName, f.EmailAddress))
+		} else {
 			names = append(names, f.DisplayName)
 		}
 	}
-	return strings.Join(names, "; ")
+	return strings.Join(names, ", ")
 }
 
 func loadCoursesFromJSON(filename string) ([]Course, error) {
@@ -103,6 +114,9 @@ func exportToCSV(rows []CSVExportRow, filename string) error {
 		"Term", "Subject", "Course Name", "Course Number", "CRN", "Section",
 		"Time", "Days", "Location", "Date Range", "Schedule Type",
 		"Instructor", "Instructional Method", "Units", "Available",
+		"Campus", "Campus Description", "Building Code", "Building Name", "Room Number",
+		"Meeting Type", "Meeting Description", "Instructor Email", "Credit Hours",
+		"Start Date", "End Date",
 	}
 	if err := writer.Write(header); err != nil {
 		return fmt.Errorf("error writing header: %v", err)
@@ -125,17 +139,30 @@ func exportToCSV(rows []CSVExportRow, filename string) error {
 			row.InstructionalMethod,
 			row.Units,
 			fmt.Sprintf("%v", row.Available),
+			row.Campus,
+			row.CampusDescription,
+			row.BuildingCode,
+			row.BuildingName,
+			row.RoomNumber,
+			row.MeetingType,
+			row.MeetingDescription,
+			row.InstructorEmail,
+			row.CreditHours,
+			row.StartDate,
+			row.EndDate,
 		}
 		if err := writer.Write(record); err != nil {
 			return fmt.Errorf("error writing record: %v", err)
 		}
 	}
+
 	return nil
 }
 
 func main() {
 	courseFlag := flag.Bool("course", false, "fetch course info")
 	allCoursesFlag := flag.Bool("all", false, "fetch all courses and export to CSV")
+	dryRunFlag := flag.Bool("dry-run", false, "dry run")
 	flag.Parse()
 
 	if *courseFlag {
@@ -147,34 +174,79 @@ func main() {
 		}
 
 		courseSubject, courseID, err := getCourseDetails(os.Stdin, flag.Args()...)
-		fmt.Println(courseSubject, courseID)
 		if err != nil {
 			fmt.Printf("Error fetching courses sessions: %v\n", err)
 			return
 		}
-		crn, err := session.fetchCourseInfo("202501", courseSubject, courseID)
+		response, err := session.fetchCourseInfo("202501", courseSubject, courseID)
 		if err != nil {
 			fmt.Printf("Error fetching course info: %v\n", err)
 			return
 		}
 
-		for _, course := range crn.CRNS {
-			if course.CourseReferenceNumber != "" {
-				fmt.Println(course.CourseReferenceNumber)
-				details, err := session.fetchSessions("202501", course.CourseReferenceNumber)
-				if err != nil {
-					fmt.Printf("Error fetching course details: %v\n", err)
-					return
+		// Track if we've printed the professor's email
+		emailPrinted := make(map[string]bool)
+
+		for _, section := range response.Data {
+			if section.CourseReferenceNumber == "" {
+				continue
+			}
+
+			details, err := session.fetchSessions("202501", section.CourseReferenceNumber)
+			if err != nil {
+				fmt.Printf("Error fetching course details: %v\n", err)
+				return
+			}
+
+			for _, meetingFaculty := range details.Fmt {
+				// Print professor's email only once at the top
+				if len(meetingFaculty.Faculty) > 0 && !emailPrinted[meetingFaculty.Faculty[0].EmailAddress] && meetingFaculty.Faculty[0].EmailAddress != "" {
+					fmt.Printf("Email: %s\n", meetingFaculty.Faculty[0].EmailAddress)
+					fmt.Println("------------------------")
+					emailPrinted[meetingFaculty.Faculty[0].EmailAddress] = true
 				}
-				if len(details.Fmt) > 0 {
-					for _, section := range details.Fmt {
-						mt := section.MeetingTime
-						if mt.BeginTime != "" {
-							fmt.Printf("Schedule: %s-%s\n", mt.BeginTime, mt.EndTime)
-							fmt.Printf("Location: %s (%s) Room %s\n", mt.Building, mt.BuildingDescription, mt.Room)
-						}
+
+				mt := meetingFaculty.MeetingTime
+				fmt.Printf("Detailed Course Information for CRN %s:\n", section.CourseReferenceNumber)
+				fmt.Printf("Course: %s-%s\n", courseID, section.Section)
+
+				if mt.BeginTime != "" {
+					fmt.Printf("Schedule: %s-%s\n", formatTime(mt.BeginTime), formatTime(mt.EndTime))
+					fmt.Printf("Location: %s (%s) Room %s\n", mt.Building, mt.BuildingDescription, mt.Room)
+					fmt.Printf("Type: %s\n", mt.MeetingType)
+					fmt.Printf("Days: %s\n", getDays(mt))
+				}
+
+				if len(meetingFaculty.Faculty) > 0 && meetingFaculty.Faculty[0].DisplayName != "" {
+					fmt.Printf("Professor: %s\n", meetingFaculty.Faculty[0].DisplayName)
+					if meetingFaculty.Faculty[0].EmailAddress != "" {
+						fmt.Printf("Email: %s\n", meetingFaculty.Faculty[0].EmailAddress)
 					}
 				}
+
+				// Add enrollment information from the section
+				fmt.Printf("Enrollment: %d/%d", section.Enrollment, section.MaximumEnrollment)
+				if section.WaitCount > 0 {
+					fmt.Printf(" (Waitlist: %d/%d)", section.WaitCount, section.WaitCapacity)
+				}
+				fmt.Println()
+
+				// Add credit hours
+				if section.CreditHourHigh > 0 {
+					fmt.Printf("Credit Hours: %.1f\n", section.CreditHourHigh)
+				}
+
+				// Add instructional method
+				if section.InstructionalMethodDescription != "" {
+					fmt.Printf("Instruction Type: %s\n", section.InstructionalMethodDescription)
+				}
+
+				// Add date range
+				if mt.StartDate != "" && mt.EndDate != "" {
+					fmt.Printf("Date Range: %s to %s\n", mt.StartDate, mt.EndDate)
+				}
+
+				fmt.Println("------------------------")
 			}
 		}
 		return
@@ -213,7 +285,12 @@ func main() {
 		}()
 
 		// Process each course
-		for _, c := range courses {
+		for i, c := range courses {
+			if *dryRunFlag {
+				if i >= 10 {
+					break
+				}
+			}
 			subject := c.SubjectCode.Name
 			number := strings.TrimPrefix(c.CourseID, subject)
 
@@ -226,7 +303,18 @@ func main() {
 
 				fmt.Printf("Fetching details for %s %s (%s)...\n", subject, number, c.Title)
 
-				crn, err := session.fetchCourseInfo("202501", subject, number)
+				maxRetries := 3
+				var response *CourseResponse
+				var err error
+
+				for i := 0; i < maxRetries; i++ {
+					response, err = session.fetchCourseInfo("202501", subject, number)
+					if err == nil {
+						break
+					}
+					fmt.Printf("Retrying %s %s (%s)...\n", subject, number, c.Title)
+					time.Sleep(1 * time.Second)
+				}
 				if err != nil {
 					errorCh <- fmt.Errorf("error fetching course info for %s %s: %v", subject, number, err)
 					// Even if there's an error, we'll record the course as unavailable
@@ -241,7 +329,7 @@ func main() {
 				}
 
 				// If no CRNs returned, course isn't available this term
-				if len(crn.CRNS) == 0 {
+				if len(response.Data) == 0 {
 					results <- CSVExportRow{
 						Term:         "202501",
 						Subject:      subject,
@@ -252,15 +340,15 @@ func main() {
 					return
 				}
 
-				for _, courseCRN := range crn.CRNS {
-					if courseCRN.CourseReferenceNumber == "" {
+				for _, section := range response.Data {
+					if section.CourseReferenceNumber == "" {
 						continue
 					}
 
-					details, err := session.fetchSessions("202501", courseCRN.CourseReferenceNumber)
+					details, err := session.fetchSessions("202501", section.CourseReferenceNumber)
 					if err != nil {
 						errorCh <- fmt.Errorf("error fetching session for CRN %s: %v",
-							courseCRN.CourseReferenceNumber, err)
+							section.CourseReferenceNumber, err)
 						continue
 					}
 
@@ -276,7 +364,7 @@ func main() {
 							Subject:      subject,
 							CourseName:   c.Title,
 							CourseNumber: number,
-							CRN:          courseCRN.CourseReferenceNumber,
+							CRN:          section.CourseReferenceNumber,
 							Section:      section.Section,
 							Time:         fmt.Sprintf("%s-%s", formatTime(mt.BeginTime), formatTime(mt.EndTime)),
 							Days:         getDays(mt),
