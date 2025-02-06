@@ -1,5 +1,13 @@
 package main
 
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+)
+
 // Core structs remain the same
 type Course struct {
 	CourseID    string      `json:"__catalogCourseId"`
@@ -139,4 +147,85 @@ type CourseResponse struct {
 
 type DetailedResponse struct {
 	Fmt []MeetingFaculty `json:"fmt"`
+}
+
+type KualiCredits struct {
+	Credits struct {
+		Min string `json:"min"`
+		Max string `json:"max"`
+	} `json:"credits"`
+	Value  string `json:"value"`
+	Chosen string `json:"chosen"`
+}
+
+type KualiCrossListedCourse struct {
+	CatalogCourseID string `json:"__catalogCourseId"`
+	PID            string `json:"pid"`
+	Title          string `json:"title"`
+}
+
+type KualiSubjectCode struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	ID          string `json:"id"`
+	LinkedGroup string `json:"linkedGroup"`
+}
+
+type KualiCourseInfo struct {
+	PassedCatalogQuery bool                   `json:"__passedCatalogQuery"`
+	Description        string                 `json:"description"`
+	PID               string                 `json:"pid"`
+	Title             string                 `json:"title"`
+	SupplementalNotes string                 `json:"supplementalNotes"`
+	CatalogCourseID   string                 `json:"__catalogCourseId"`
+	Credits           KualiCredits           `json:"credits"`
+	CrossListedCourses []KualiCrossListedCourse `json:"crossListedCourses"`
+	DateStart         string                 `json:"dateStart"`
+	SubjectCode       KualiSubjectCode       `json:"subjectCode"`
+	HoursCatalogText  string                 `json:"hoursCatalogText"`
+}
+
+func fetchKualiCourseInfo(pid string) (*KualiCourseInfo, error) {
+	url := fmt.Sprintf("https://uvic.kuali.co/api/v1/catalog/course/65eb47906641d7001c157bc4/%s", pid)
+	
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch Kuali data: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	var info KualiCourseInfo
+	if err := json.Unmarshal(body, &info); err != nil {
+		return nil, fmt.Errorf("failed to parse Kuali data: %v", err)
+	}
+
+	return &info, nil
+}
+
+// Helper function to clean HTML tags from strings
+func cleanHTML(input string) string {
+	// Simple HTML tag removal - you might want to use a proper HTML parser for more complex cases
+	noTags := strings.ReplaceAll(input, "</p>", "\n")
+	noTags = strings.ReplaceAll(noTags, "</li>", "\n")
+	noTags = strings.ReplaceAll(noTags, "<ul>", "")
+	noTags = strings.ReplaceAll(noTags, "</ul>", "")
+	noTags = strings.ReplaceAll(noTags, "<li>", "• ")
+	
+	// Remove any remaining HTML tags
+	for strings.Contains(noTags, "<") {
+		start := strings.Index(noTags, "<")
+		end := strings.Index(noTags, ">")
+		if end > start {
+			noTags = noTags[:start] + noTags[end+1:]
+		} else {
+			break
+		}
+	}
+	
+	return strings.TrimSpace(noTags)
 }
