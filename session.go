@@ -14,6 +14,11 @@ type Session struct {
 }
 
 func NewSession() (*Session, error) {
+	client := &http.Client{}
+	return &Session{client: client}, nil
+}
+
+func (s *Session) fetchCourseInfo(term string, subject string, courseNumber string) (*CourseResponse, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, err
@@ -24,18 +29,15 @@ func NewSession() (*Session, error) {
 			return nil
 		},
 	}
-	return &Session{client: client}, nil
-}
 
-func (s *Session) fetchCourseInfo(term string, subject string, courseNumber string) (*CourseResponse, error) {
 	initURL := "https://banner.uvic.ca/StudentRegistrationSsb/ssb/term/termSelection?mode=search"
-	if err := makeRequest(s.client, "GET", initURL, nil); err != nil {
+	if err := makeRequest(client, "GET", initURL, nil); err != nil {
 		return nil, fmt.Errorf("init request failed: %v", err)
 	}
 
 	termURL := "https://banner.uvic.ca/StudentRegistrationSsb/ssb/term/search?mode=search"
 	termData := strings.NewReader(fmt.Sprintf("term=%s&studyPath=&studyPathText=&startDatepicker=&endDatepicker=", term))
-	if err := makeRequest(s.client, "POST", termURL, termData); err != nil {
+	if err := makeRequest(client, "POST", termURL, termData); err != nil {
 		return nil, fmt.Errorf("term setup failed: %v", err)
 	}
 
@@ -51,7 +53,7 @@ func (s *Session) fetchCourseInfo(term string, subject string, courseNumber stri
 		"User-Agent": {"Mozilla/5.0"},
 	}
 
-	resp, err := s.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -70,13 +72,7 @@ func (s *Session) fetchSessions(term, crn string) (*DetailedResponse, error) {
 	termURL := "https://banner.uvic.ca/StudentRegistrationSsb/ssb/term/search?mode=search"
 	termData := strings.NewReader(fmt.Sprintf("term=%s&studyPath=&studyPathText=&startDatepicker=&endDatepicker=", term))
 
-	if err := makeRequest(s.client, "POST", termURL, termData); err != nil {
-		return nil, fmt.Errorf("term setup failed: %v", err)
-	}
-
-	detailURL := fmt.Sprintf("https://banner.uvic.ca/StudentRegistrationSsb/ssb/searchResults/getFacultyMeetingTimes?term=%s&courseReferenceNumber=%s", term, crn)
-
-	req, err := http.NewRequest("GET", detailURL, nil)
+	req, err := http.NewRequest("POST", termURL, termData)
 	if err != nil {
 		return nil, err
 	}
@@ -88,17 +84,27 @@ func (s *Session) fetchSessions(term, crn string) (*DetailedResponse, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	detailURL := fmt.Sprintf("https://banner.uvic.ca/StudentRegistrationSsb/ssb/searchResults/getFacultyMeetingTimes?term=%s&courseReferenceNumber=%s", term, crn)
+
+	req, err = http.NewRequest("GET", detailURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %v", err)
+		return nil, err
 	}
 
-	var response DetailedResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("failed to decode JSON: %v", err)
+	resp, err = s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	var info DetailedResponse
+	if err := json.Unmarshal(body, &info); err != nil {
+		return nil, fmt.Errorf("failed to decode JSON %v", err)
 	}
 
-	return &response, nil
+	return &info, nil
 }
 
 func makeRequest(client *http.Client, method, url string, body io.Reader) error {
@@ -108,8 +114,16 @@ func makeRequest(client *http.Client, method, url string, body io.Reader) error 
 	}
 
 	req.Header = http.Header{
-		"User-Agent":   {"Mozilla/5.0"},
-		"Content-Type": {"application/x-www-form-urlencoded"},
+		"Accept":          {"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"},
+		"Accept-Language": {"en-US,en;q=0.9"},
+		"Connection":      {"keep-alive"},
+		"User-Agent":      {"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"},
+		"Cache-Control":   {"max-age=0"},
+	}
+
+	if method == "POST" {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	}
 
 	resp, err := client.Do(req)

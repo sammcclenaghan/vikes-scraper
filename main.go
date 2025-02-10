@@ -288,6 +288,7 @@ func main() {
 				}
 			}
 		}
+		return
 	}
 
 	if *allCoursesFlag {
