@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -274,8 +275,43 @@ func main() {
 				prereq = strings.ReplaceAll(prereq, "</div>", "")
 				prereq = strings.ReplaceAll(prereq, "<ul>", "")
 				prereq = strings.ReplaceAll(prereq, "</ul>", "")
-				prereq = strings.ReplaceAll(prereq, "<li>", "• ")
+				prereq = strings.ReplaceAll(prereq, "<li>", "")
 				prereq = strings.ReplaceAll(prereq, "</li>", "\n")
+				prereq = strings.ReplaceAll(prereq, "<span>", "")
+				prereq = strings.ReplaceAll(prereq, "</span>", "")
+				prereq = strings.ReplaceAll(prereq, "<a href=\"#/courses/view/[a-zA-Z0-9]+\" target=\"_blank\">", "")
+				prereq = strings.ReplaceAll(prereq, "</a>", "")
+				prereq = strings.ReplaceAll(prereq, "<!-- -->", "")
+				prereq = strings.ReplaceAll(prereq, " style=\"margin-left:5px\"", "")
+				prereq = strings.ReplaceAll(prereq, " style=\"margin-top:5px;margin-bottom:5px\"", "")
+				prereq = strings.ReplaceAll(prereq, " data-test=\"ruleView-[A-Z]\"", "")
+				prereq = strings.ReplaceAll(prereq, " data-test=\"ruleView-[A-Z]-result\"", "")
+
+				// Clean up any remaining HTML tags
+				re := regexp.MustCompile("<[^>]*>")
+				prereq = re.ReplaceAllString(prereq, "")
+
+				// Clean up multiple newlines and spaces
+				prereq = strings.ReplaceAll(prereq, "\n\n\n", "\n")
+				prereq = strings.ReplaceAll(prereq, "  ", " ")
+
+				// Format prerequisites nicely
+				prereq = strings.ReplaceAll(prereq, "Complete 1 of the following", "Complete 1 of the following:")
+				prereq = strings.ReplaceAll(prereq, "Completed or concurrently enrolled in 1 of:", "\nCompleted or concurrently enrolled in 1 of:")
+				prereq = strings.ReplaceAll(prereq, " - ", ": ")
+
+				// Add bullet points for courses
+				lines := strings.Split(prereq, "\n")
+				var formattedLines []string
+				for _, line := range lines {
+					if strings.Contains(line, "BIOL") || strings.Contains(line, "MICR") {
+						formattedLines = append(formattedLines, "• "+line)
+					} else {
+						formattedLines = append(formattedLines, line)
+					}
+				}
+				prereq = strings.Join(formattedLines, "\n")
+
 				fmt.Printf("\nPrerequisites:\n%s\n", strings.Repeat("-", 13))
 				fmt.Printf("%s\n", prereq)
 			}
@@ -284,7 +320,22 @@ func main() {
 				notes := strings.ReplaceAll(kualiInfo.SupplementalNotes, "<ul>", "")
 				notes = strings.ReplaceAll(notes, "</ul>", "")
 				notes = strings.ReplaceAll(notes, "<li>", "• ")
-				notes = strings.ReplaceAll(notes, "</li>", "\n")
+				notes = strings.ReplaceAll(notes, "</li>", "")
+				notes = strings.ReplaceAll(notes, "<span>", "")
+				notes = strings.ReplaceAll(notes, "</span>", "")
+				notes = strings.ReplaceAll(notes, "<a href=\"#/courses/view/[a-zA-Z0-9]+\" target=\"_blank\">", "")
+				notes = strings.ReplaceAll(notes, "</a>", "")
+				notes = strings.ReplaceAll(notes, "<!-- -->", "")
+				notes = strings.ReplaceAll(notes, "&quot;", "\"")
+				
+				// Clean up any remaining HTML tags
+				re := regexp.MustCompile("<[^>]*>")
+				notes = re.ReplaceAllString(notes, "")
+				
+				// Clean up multiple newlines and spaces
+				notes = strings.ReplaceAll(notes, "\n\n", "\n")
+				notes = strings.ReplaceAll(notes, "  ", " ")
+				
 				fmt.Printf("\nNotes:\n%s\n", strings.Repeat("-", 6))
 				fmt.Printf("%s\n", notes)
 			}
@@ -297,7 +348,7 @@ func main() {
 			// Group sections by type
 			var lectures []string
 			var labs []string
-
+			
 			for _, section := range bannerResponse.Data {
 				if section.CourseReferenceNumber == "" {
 					continue
@@ -322,7 +373,13 @@ func main() {
 							formatTime(mt.BeginTime),
 							formatTime(mt.EndTime),
 							getDays(mt)))
-						sectionInfo.WriteString(fmt.Sprintf("Location: %s Room %s\n", mt.BuildingDescription, mt.Room))
+						// Clean up HTML entities in location
+						location := strings.ReplaceAll(mt.BuildingDescription, "&eacute;", "é")
+						location = strings.ReplaceAll(location, "&aacute;", "á")
+						location = strings.ReplaceAll(location, "&iacute;", "í")
+						location = strings.ReplaceAll(location, "&oacute;", "ó")
+						location = strings.ReplaceAll(location, "&uacute;", "ú")
+						sectionInfo.WriteString(fmt.Sprintf("Location: %s Room %s\n", location, mt.Room))
 					}
 
 					if len(meetingFaculty.Faculty) > 0 && meetingFaculty.Faculty[0].DisplayName != "" {
@@ -368,6 +425,9 @@ func main() {
 					fmt.Print(lab)
 				}
 			}
+			
+			// Add a separator between courses
+			fmt.Printf("\n%s\n", strings.Repeat("=", 80))
 		}
 		return
 	}
