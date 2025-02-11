@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 )
 
 // Core structs remain the same
@@ -149,7 +148,31 @@ type DetailedResponse struct {
 	Fmt []MeetingFaculty `json:"fmt"`
 }
 
-type KualiCredits struct {
+type KualiCourseInfo struct {
+	PreOrCorequisites     string      `json:"preOrCorequisites"`
+	PassedCatalogQuery    bool        `json:"__passedCatalogQuery"`
+	GroupFilter1          GroupFilter `json:"groupFilter1"`
+	Description           string      `json:"description"`
+	PID                   string      `json:"pid"`
+	Title                 string      `json:"title"`
+	SupplementalNotes     string      `json:"supplementalNotes"`
+	CatalogCourseId       string      `json:"__catalogCourseId"`
+	ProForma              string      `json:"proForma"`
+	Credits               Credits     `json:"credits"`
+	DateStart             string      `json:"dateStart"`
+	ID                    string      `json:"id"`
+	SubjectCode           SubjectCode `json:"subjectCode"`
+	CatalogActivationDate string      `json:"catalogActivationDate"`
+	HoursCatalogText      string      `json:"hoursCatalogText"`
+}
+
+type GroupFilter struct {
+	Name         string                 `json:"name"`
+	ID           string                 `json:"id"`
+	CustomFields map[string]interface{} `json:"customFields"`
+}
+
+type Credits struct {
 	Credits struct {
 		Min string `json:"min"`
 		Max string `json:"max"`
@@ -158,74 +181,47 @@ type KualiCredits struct {
 	Chosen string `json:"chosen"`
 }
 
-type KualiCrossListedCourse struct {
-	CatalogCourseID string `json:"__catalogCourseId"`
-	PID            string `json:"pid"`
-	Title          string `json:"title"`
-}
-
-type KualiSubjectCode struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	ID          string `json:"id"`
-	LinkedGroup string `json:"linkedGroup"`
-}
-
-type KualiCourseInfo struct {
-	PassedCatalogQuery bool                   `json:"__passedCatalogQuery"`
-	Description        string                 `json:"description"`
-	PID               string                 `json:"pid"`
-	Title             string                 `json:"title"`
-	SupplementalNotes string                 `json:"supplementalNotes"`
-	CatalogCourseID   string                 `json:"__catalogCourseId"`
-	Credits           KualiCredits           `json:"credits"`
-	CrossListedCourses []KualiCrossListedCourse `json:"crossListedCourses"`
-	DateStart         string                 `json:"dateStart"`
-	SubjectCode       KualiSubjectCode       `json:"subjectCode"`
-	HoursCatalogText  string                 `json:"hoursCatalogText"`
-}
-
 func fetchKualiCourseInfo(pid string) (*KualiCourseInfo, error) {
 	url := fmt.Sprintf("https://uvic.kuali.co/api/v1/catalog/course/65eb47906641d7001c157bc4/%s", pid)
-	
-	resp, err := http.Get(url)
+
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %v", err)
+	}
+
+	// Add headers to mimic browser request
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch Kuali data: %v", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}
 
+	// Try to unmarshal as single object first
 	var info KualiCourseInfo
 	if err := json.Unmarshal(body, &info); err != nil {
-		return nil, fmt.Errorf("failed to parse Kuali data: %v", err)
+		// If that fails, try to unmarshal as array
+		var infoArray []KualiCourseInfo
+		if err := json.Unmarshal(body, &infoArray); err != nil {
+			return nil, fmt.Errorf("failed to parse Kuali data: %v", err)
+		}
+		if len(infoArray) == 0 {
+			return nil, fmt.Errorf("no course data found")
+		}
+		return &infoArray[0], nil
 	}
 
 	return &info, nil
-}
-
-// Helper function to clean HTML tags from strings
-func cleanHTML(input string) string {
-	// Simple HTML tag removal - you might want to use a proper HTML parser for more complex cases
-	noTags := strings.ReplaceAll(input, "</p>", "\n")
-	noTags = strings.ReplaceAll(noTags, "</li>", "\n")
-	noTags = strings.ReplaceAll(noTags, "<ul>", "")
-	noTags = strings.ReplaceAll(noTags, "</ul>", "")
-	noTags = strings.ReplaceAll(noTags, "<li>", "• ")
-	
-	// Remove any remaining HTML tags
-	for strings.Contains(noTags, "<") {
-		start := strings.Index(noTags, "<")
-		end := strings.Index(noTags, ">")
-		if end > start {
-			noTags = noTags[:start] + noTags[end+1:]
-		} else {
-			break
-		}
-	}
-	
-	return strings.TrimSpace(noTags)
 }

@@ -176,6 +176,38 @@ func exportToCSV(rows []CSVExportRow, filename string) error {
 	return nil
 }
 
+func findCourseInJSON(subject, number string) (string, error) {
+	// Read and parse courses.json
+	data, err := os.ReadFile("courses.json")
+	if err != nil {
+		return "", fmt.Errorf("error reading courses.json: %v", err)
+	}
+
+	var courses []struct {
+		CatalogCourseId string `json:"__catalogCourseId"`
+		Pid             string `json:"pid"`
+		SubjectCode     struct {
+			Name string `json:"name"`
+		} `json:"subjectCode"`
+	}
+
+	if err := json.Unmarshal(data, &courses); err != nil {
+		return "", fmt.Errorf("error parsing courses.json: %v", err)
+	}
+
+	// Construct the full course ID to search for
+	searchCourseId := fmt.Sprintf("%s%s", subject, number)
+
+	// Search for the course
+	for _, course := range courses {
+		if course.CatalogCourseId == searchCourseId {
+			return course.Pid, nil
+		}
+	}
+
+	return "", fmt.Errorf("course %s %s not found", subject, number)
+}
+
 func main() {
 	courseFlag := flag.Bool("course", false, "fetch course info")
 	coursesFlag := flag.Bool("courses", false, "fetch multiple courses info")
@@ -214,6 +246,25 @@ func main() {
 
 		for _, query := range courseQueries {
 			courseSubject, courseID := query[0], query[1]
+			pid, err := findCourseInJSON(courseSubject, courseID)
+			if err != nil {
+				fmt.Printf("Error finding course: %v\n", err)
+				return
+			}
+			kualiInfo, err := fetchKualiCourseInfo(pid)
+			if err != nil {
+				fmt.Printf("Error fetching Kuali info: %v\n", err)
+				return
+			}
+			fmt.Printf("\nCourse Information for %s %s:\n", courseSubject, courseID)
+			fmt.Printf("Title: %s\n", kualiInfo.Title)
+			fmt.Printf("Description: %s\n", kualiInfo.Description)
+			fmt.Printf("Prerequisites: %s\n", kualiInfo.PreOrCorequisites)
+			fmt.Printf("Credits: %s\n", kualiInfo.Credits.Value)
+			fmt.Printf("Hours: %s\n", kualiInfo.HoursCatalogText)
+			if kualiInfo.SupplementalNotes != "" {
+				fmt.Printf("Notes: %s\n", kualiInfo.SupplementalNotes)
+			}
 			response, err := session.fetchCourseInfo("202501", courseSubject, courseID)
 			if err != nil {
 				fmt.Printf("Error fetching course info for %s %s: %v\n", courseSubject, courseID, err)
