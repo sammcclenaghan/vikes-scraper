@@ -256,25 +256,49 @@ func main() {
 				fmt.Printf("Error fetching Kuali info: %v\n", err)
 				return
 			}
-			fmt.Printf("\nCourse Information for %s %s:\n", courseSubject, courseID)
-			fmt.Printf("Title: %s\n", kualiInfo.Title)
-			fmt.Printf("Description: %s\n", kualiInfo.Description)
-			fmt.Printf("Prerequisites: %s\n", kualiInfo.PreOrCorequisites)
+			fmt.Printf("\n%s %s: %s\n", courseSubject, courseID, kualiInfo.Title)
+			fmt.Printf("%s\n", strings.Repeat("=", len(courseSubject)+len(courseID)+2+len(kualiInfo.Title)))
+
+			// Course Description
+			desc := strings.ReplaceAll(kualiInfo.Description, "<p>", "")
+			desc = strings.ReplaceAll(desc, "</p>", "")
+			fmt.Printf("\nDescription:\n%s\n", desc)
+
+			// Course Details
+			fmt.Printf("\nCourse Details:\n%s\n", strings.Repeat("-", 14))
 			fmt.Printf("Credits: %s\n", kualiInfo.Credits.Value)
 			fmt.Printf("Hours: %s\n", kualiInfo.HoursCatalogText)
+
+			if kualiInfo.PreOrCorequisites != "" {
+				prereq := strings.ReplaceAll(kualiInfo.PreOrCorequisites, "<div>", "")
+				prereq = strings.ReplaceAll(prereq, "</div>", "")
+				prereq = strings.ReplaceAll(prereq, "<ul>", "")
+				prereq = strings.ReplaceAll(prereq, "</ul>", "")
+				prereq = strings.ReplaceAll(prereq, "<li>", "• ")
+				prereq = strings.ReplaceAll(prereq, "</li>", "\n")
+				fmt.Printf("\nPrerequisites:\n%s\n", strings.Repeat("-", 13))
+				fmt.Printf("%s\n", prereq)
+			}
+
 			if kualiInfo.SupplementalNotes != "" {
-				fmt.Printf("Notes: %s\n", kualiInfo.SupplementalNotes)
+				notes := strings.ReplaceAll(kualiInfo.SupplementalNotes, "<ul>", "")
+				notes = strings.ReplaceAll(notes, "</ul>", "")
+				notes = strings.ReplaceAll(notes, "<li>", "• ")
+				notes = strings.ReplaceAll(notes, "</li>", "\n")
+				fmt.Printf("\nNotes:\n%s\n", strings.Repeat("-", 6))
+				fmt.Printf("%s\n", notes)
 			}
-			response, err := session.fetchCourseInfo("202501", courseSubject, courseID)
+			bannerResponse, err := session.fetchCourseInfo("202501", courseSubject, courseID)
 			if err != nil {
-				fmt.Printf("Error fetching course info for %s %s: %v\n", courseSubject, courseID, err)
-				continue
+				fmt.Printf("Error fetching Banner course info: %v\n", err)
+				return
 			}
 
-			// Track if we've printed the professor's email
-			emailPrinted := make(map[string]bool)
+			// Group sections by type
+			var lectures []string
+			var labs []string
 
-			for _, section := range response.Data {
+			for _, section := range bannerResponse.Data {
 				if section.CourseReferenceNumber == "" {
 					continue
 				}
@@ -286,56 +310,62 @@ func main() {
 				}
 
 				for _, meetingFaculty := range details.Fmt {
-					// Print professor's email only once at the top
-					if len(meetingFaculty.Faculty) > 0 && !emailPrinted[meetingFaculty.Faculty[0].EmailAddress] && meetingFaculty.Faculty[0].EmailAddress != "" {
-						fmt.Printf("Email: %s\n", meetingFaculty.Faculty[0].EmailAddress)
-						fmt.Println("------------------------")
-						emailPrinted[meetingFaculty.Faculty[0].EmailAddress] = true
-					}
-
 					mt := meetingFaculty.MeetingTime
+					var sectionInfo strings.Builder
 
-					fmt.Printf("Detailed Course Information for CRN %s:\n", section.CourseReferenceNumber)
-					fmt.Printf("Course: %s %s-%s\n", courseSubject, courseID, section.Section)
-					fmt.Printf("Title: %s\n", section.CourseTitle)
+					sectionInfo.WriteString(fmt.Sprintf("\nSection %s (CRN: %s)\n", section.Section, section.CourseReferenceNumber))
+					sectionInfo.WriteString(strings.Repeat("-", len(fmt.Sprintf("Section %s (CRN: %s)", section.Section, section.CourseReferenceNumber))))
+					sectionInfo.WriteString("\n")
 
 					if mt.BeginTime != "" {
-						fmt.Printf("Schedule: %s-%s\n", formatTime(mt.BeginTime), formatTime(mt.EndTime))
-						fmt.Printf("Location: %s (%s) Room %s\n", mt.Building, mt.BuildingDescription, mt.Room)
-						fmt.Printf("Type: %s\n", mt.MeetingType)
-						fmt.Printf("Days: %s\n", getDays(mt))
+						sectionInfo.WriteString(fmt.Sprintf("Schedule: %s-%s on %s\n",
+							formatTime(mt.BeginTime),
+							formatTime(mt.EndTime),
+							getDays(mt)))
+						sectionInfo.WriteString(fmt.Sprintf("Location: %s Room %s\n", mt.BuildingDescription, mt.Room))
 					}
 
 					if len(meetingFaculty.Faculty) > 0 && meetingFaculty.Faculty[0].DisplayName != "" {
-						fmt.Printf("Professor: %s\n", meetingFaculty.Faculty[0].DisplayName)
+						sectionInfo.WriteString(fmt.Sprintf("Instructor: %s\n", meetingFaculty.Faculty[0].DisplayName))
 						if meetingFaculty.Faculty[0].EmailAddress != "" {
-							fmt.Printf("Email: %s\n", meetingFaculty.Faculty[0].EmailAddress)
+							sectionInfo.WriteString(fmt.Sprintf("Email: %s\n", meetingFaculty.Faculty[0].EmailAddress))
 						}
 					}
 
-					// Add enrollment information from the section
-					fmt.Printf("Enrollment: %d/%d", section.Enrollment, section.MaximumEnrollment)
+					sectionInfo.WriteString(fmt.Sprintf("Enrollment: %d/%d", section.Enrollment, section.MaximumEnrollment))
 					if section.WaitCount > 0 {
-						fmt.Printf(" (Waitlist: %d/%d)", section.WaitCount, section.WaitCapacity)
+						sectionInfo.WriteString(fmt.Sprintf(" (Waitlist: %d/%d)", section.WaitCount, section.WaitCapacity))
 					}
-					fmt.Println()
+					sectionInfo.WriteString("\n")
 
-					// Add credit hours
-					if section.CreditHourHigh > 0 {
-						fmt.Printf("Credit Hours: %.1f\n", section.CreditHourHigh)
-					}
-
-					// Add instructional method
 					if section.InstructionalMethodDescription != "" {
-						fmt.Printf("Instruction Type: %s\n", section.InstructionalMethodDescription)
+						sectionInfo.WriteString(fmt.Sprintf("Format: %s\n", section.InstructionalMethodDescription))
 					}
 
-					// Add date range
 					if mt.StartDate != "" && mt.EndDate != "" {
-						fmt.Printf("Date Range: %s to %s\n", mt.StartDate, mt.EndDate)
+						sectionInfo.WriteString(fmt.Sprintf("Dates: %s to %s\n", mt.StartDate, mt.EndDate))
 					}
 
-					fmt.Println("------------------------")
+					// Add to appropriate group based on section type
+					if strings.HasPrefix(section.Section, "A") {
+						lectures = append(lectures, sectionInfo.String())
+					} else {
+						labs = append(labs, sectionInfo.String())
+					}
+				}
+			}
+
+			if len(lectures) > 0 {
+				fmt.Printf("\nLecture Sections:\n%s\n", strings.Repeat("=", 16))
+				for _, lecture := range lectures {
+					fmt.Print(lecture)
+				}
+			}
+
+			if len(labs) > 0 {
+				fmt.Printf("\nLab/Tutorial Sections:\n%s\n", strings.Repeat("=", 20))
+				for _, lab := range labs {
+					fmt.Print(lab)
 				}
 			}
 		}
