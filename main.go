@@ -214,6 +214,7 @@ func main() {
 	coursesFlag := flag.Bool("courses", false, "fetch multiple courses info")
 	allCoursesFlag := flag.Bool("all", false, "fetch all courses and export to CSV")
 	dryRunFlag := flag.Bool("dry-run", false, "dry run")
+	semesterFlag := flag.String("semester", "202501", "term code (e.g., 202501, 202509)")
 	flag.Parse()
 
 	if *courseFlag || *coursesFlag {
@@ -339,7 +340,7 @@ func main() {
 				fmt.Printf("\nNotes:\n%s\n", strings.Repeat("-", 6))
 				fmt.Printf("%s\n", notes)
 			}
-			bannerResponse, err := session.fetchCourseInfo("202501", courseSubject, courseID)
+			bannerResponse, err := session.fetchCourseInfo(*semesterFlag, courseSubject, courseID)
 			if err != nil {
 				fmt.Printf("Error fetching Banner course info: %v\n", err)
 				return
@@ -354,7 +355,7 @@ func main() {
 					continue
 				}
 
-				details, err := session.fetchSessions("202501", section.CourseReferenceNumber)
+				details, err := session.fetchSessions(*semesterFlag, section.CourseReferenceNumber)
 				if err != nil {
 					fmt.Printf("Error fetching course details: %v\n", err)
 					continue
@@ -488,7 +489,7 @@ func main() {
 				var err error
 
 				for i := 0; i < maxRetries; i++ {
-					response, err = session.fetchCourseInfo("202501", subject, number)
+					response, err = session.fetchCourseInfo(*semesterFlag, subject, number)
 					if err == nil {
 						break
 					}
@@ -499,7 +500,7 @@ func main() {
 					errorCh <- fmt.Errorf("error fetching course info for %s %s: %v", subject, number, err)
 					// Even if there's an error, we'll record the course as unavailable
 					results <- CSVExportRow{
-						Term:         "202501",
+						Term:         *semesterFlag,
 						Subject:      subject,
 						CourseName:   c.Title,
 						CourseNumber: number,
@@ -510,7 +511,7 @@ func main() {
 
 				if len(response.Data) == 0 {
 					results <- CSVExportRow{
-						Term:         "202501",
+						Term:         *semesterFlag,
 						Subject:      subject,
 						CourseName:   c.Title,
 						CourseNumber: number,
@@ -524,7 +525,7 @@ func main() {
 						continue
 					}
 
-					details, err := session.fetchSessions("202501", section.CourseReferenceNumber)
+					details, err := session.fetchSessions(*semesterFlag, section.CourseReferenceNumber)
 					if err != nil {
 						errorCh <- fmt.Errorf("error fetching session for CRN %s: %v",
 							section.CourseReferenceNumber, err)
@@ -539,7 +540,7 @@ func main() {
 						}
 
 						row := CSVExportRow{
-							Term:         "202501",
+							Term:         *semesterFlag,
 							Subject:      subject,
 							CourseName:   c.Title,
 							CourseNumber: number,
