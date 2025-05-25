@@ -1,6 +1,6 @@
 # Vikes Scraper
 
-A command-line tool to scrape UVic course information from Banner.
+A command-line tool to scrape UVic course information from Banner and generate course schedules.
 
 ## Usage
 
@@ -31,6 +31,27 @@ By default, the scraper uses term code `202501` (Spring 2025). You can specify a
 # Fetch all courses for Summer 2025
 ./vikes-scraper -all -semester=202505
 ```
+
+### Schedule Generator
+
+Generate possible non-conflicting schedules for multiple courses:
+
+```bash
+# Generate schedules for multiple courses
+./vikes-scraper -schedule -courses CSC 110 MATH 100 PHYS 110
+
+# Generate schedules for different semester
+./vikes-scraper -schedule -semester=202509 -courses CSC 110 MATH 100 STAT 260
+
+# Limit the number of generated schedules (default is 5)
+./vikes-scraper -schedule -max-schedules=10 -courses CSC 110 MATH 100 ENGR 130
+```
+
+The schedule generator will:
+- Find all possible combinations of lecture/lab/tutorial sections
+- Eliminate schedules with time conflicts
+- Score schedules based on desirable features (fewer early mornings, days off, etc.)
+- Display the top-ranked schedules
 
 ## Term Codes
 

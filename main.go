@@ -236,15 +236,29 @@ func main() {
 			for i := 0; i < len(args); i += 2 {
 				courseQueries = append(courseQueries, []string{args[i], args[i+1]})
 			}
+			fmt.Printf("DEBUG: Processing %d course queries with -courses flag\n", len(courseQueries))
 		} else {
 			// Single course mode
-			courseSubject, courseID, err := getCourseDetails(os.Stdin, flag.Args()...)
-			if err != nil {
-				fmt.Printf("Error getting course details: %v\n", err)
-				return
+			args := flag.Args()
+			// Check if user is trying to use multiple courses without -courses flag
+			if len(args) >= 4 && len(args)%2 == 0 {
+				// They provided multiple course pairs, handle them correctly
+				for i := 0; i < len(args); i += 2 {
+					courseQueries = append(courseQueries, []string{args[i], args[i+1]})
+				}
+				fmt.Printf("DEBUG: Processing %d courses without -courses flag\n", len(courseQueries))
+			} else {
+				// Standard single course processing
+				courseSubject, courseID, err := getCourseDetails(os.Stdin, args...)
+				if err != nil {
+					fmt.Printf("Error getting course details: %v\n", err)
+					return
+				}
+				courseQueries = append(courseQueries, []string{courseSubject, courseID})
 			}
-			courseQueries = append(courseQueries, []string{courseSubject, courseID})
 		}
+
+		// If we're generating schedules, handle that separately
 
 		for _, query := range courseQueries {
 			courseSubject, courseID := query[0], query[1]
@@ -328,15 +342,15 @@ func main() {
 				notes = strings.ReplaceAll(notes, "</a>", "")
 				notes = strings.ReplaceAll(notes, "<!-- -->", "")
 				notes = strings.ReplaceAll(notes, "&quot;", "\"")
-				
+
 				// Clean up any remaining HTML tags
 				re := regexp.MustCompile("<[^>]*>")
 				notes = re.ReplaceAllString(notes, "")
-				
+
 				// Clean up multiple newlines and spaces
 				notes = strings.ReplaceAll(notes, "\n\n", "\n")
 				notes = strings.ReplaceAll(notes, "  ", " ")
-				
+
 				fmt.Printf("\nNotes:\n%s\n", strings.Repeat("-", 6))
 				fmt.Printf("%s\n", notes)
 			}
@@ -349,7 +363,7 @@ func main() {
 			// Group sections by type
 			var lectures []string
 			var labs []string
-			
+
 			for _, section := range bannerResponse.Data {
 				if section.CourseReferenceNumber == "" {
 					continue
@@ -426,7 +440,7 @@ func main() {
 					fmt.Print(lab)
 				}
 			}
-			
+
 			// Add a separator between courses
 			fmt.Printf("\n%s\n", strings.Repeat("=", 80))
 		}
